@@ -232,7 +232,7 @@ function initGOL(canvas){
   }
 
   let draw = function(scale){
-    drawTexture(scale,markFrontIndex);
+    drawTexture(scale,frontIndex);
   }
 
   let swap = function(){
@@ -405,8 +405,8 @@ function main(){
 
   gol.draw(2*500);
   window.setInterval(() => {
-    //gol.step();
-    gol.mark();
+    gol.step();
+//    gol.mark();
     gol.draw(2*500);
   }, 10);
 }
