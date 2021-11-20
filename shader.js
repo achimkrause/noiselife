@@ -20,6 +20,86 @@ const fsDraw =
   }
 `;
 
+const fsMark = 
+ `#version 300 es
+  #ifdef GL_ES
+  precision mediump float;
+  #endif
+  uniform vec2 scale;
+  uniform sampler2D state;
+  uniform sampler2D masks;
+  out vec4 fragColor;
+ 
+  int getState(int x, int y) {
+      return int(texture(state, (gl_FragCoord.xy + vec2(x, y)) / scale).r);
+  }
+
+  int getWeight(int s, int t) {
+      vec4 color = texture(masks, vec2(s, t) / scale);
+      return int(color.g - color.r);
+  }
+
+  vec4 mask(int s, int t, int rleft, int rbottom, int rright, int rtop, int hflip, int vflip){
+      int mask = 0;
+      for(int i=-rleft;i<=rright;i++){
+        for(int j=-rbottom; j<=rtop; j++){
+          int w = getWeight(s,t);
+          mask+= (w*getState(s+hflip*i,s+vflip*j) - max(w,0))*abs(sign(i))*abs(sign(j));
+        }
+      }
+      return float(max(mask,0))*texture(state, vec2(s, t) / scale);
+  }
+
+  void main(){
+    float current = float(getState(0,0));
+
+    vec4 masks = mask(1,1,-1,-1,3,3,1,1);
+    masks += mask(1,1,-1,-1,3,3,-1,1);
+    masks += mask(1,1,-1,-1,3,3,1,-1);
+    masks += mask(1,1,-1,-1,3,3,-1,-1);
+    masks += mask(7,2,-2,-2,2,2,1,1);
+    masks += mask(7,2,-2,-2,2,2,-1,1);
+    masks += mask(7,2,-2,-2,2,2,1,-1);
+    masks += mask(7,2,-2,-2,2,2,-1,-1);
+    masks += mask(12,2,-2,-2,1,1,1,1);
+
+
+    fragColor = masks;
+  }`
+
+const fsFlood = 
+ `#version 300 es
+  #ifdef GL_ES
+  precision mediump float;
+  #endif
+  uniform vec2 scale;
+  uniform sampler2D state;
+  out vec4 fragColor;
+ 
+  vec4 get(int x, int y) {
+      return texture(state, (gl_FragCoord.xy + vec2(x, y)) / scale);
+  }
+
+  vec4 maskBlack(int x, int y){
+     vec4 v = get(x,y);
+     float maskBit = (1.0-sign(v.r))*(1.0-sign(v.g))*(1.0-sign(v.b));
+     return max(v,vec4(maskBit,maskBit,maskBit,1.0));
+  }
+
+  void main(){
+     fragColor = get(0,0);
+     fragColor = min(maskBlack(1,0),fragColor);
+     fragColor = min(maskBlack(0,1),fragColor);
+     fragColor = min(maskBlack(0,-1),fragColor);
+     fragColor = min(maskBlack(-1,0),fragColor);
+     fragColor = min(maskBlack(1,1),fragColor);
+     fragColor = min(maskBlack(0,-0),fragColor);
+     fragColor = min(maskBlack(1,-1),fragColor);
+     fragColor = min(maskBlack(-1,1),fragColor);
+     fragColor = min(maskBlack(-1,-1),fragColor);
+  }`
+
+
 const fsStep = 
  `#version 300 es
   #ifdef GL_ES
@@ -92,9 +172,24 @@ function initGOL(canvas){
   //init drawProgram
   const drawProgram = createProgram(gl,vsTrivial,fsDraw, ['v_position'], ['state','scale']);
 
-  const buffer = createQuadVertexBuffer(gl); //never use this buffer.bind(), since so far we never need to bind another buffer.
+  const markProgram = createProgram(gl,vsTrivial,fsMark, ['v_position'], ['state','scale','masks']);
+  const floodProgram = createProgram(gl,vsTrivial,fsFlood, ['v_position'], ['state','scale']);
+
+  const buffer = createQuadVertexBuffer(gl); //we never use this buffer.bind(), since so far we never need to bind another buffer.
 
   let data = new Uint8Array(4*512*512).fill(0);
+
+  let masks = createTexture(gl,gl.TEXTURE4,data);
+  let masksIndex = 4;
+
+  const image = new Image();
+  image.onload = function(){
+    console.log('loaded');
+    gl.activeTexture(gl.TEXTURE4);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 100, 100, gl.RGBA, gl.UNSIGNED_BYTE, image);
+  };
+  image.src = "masks.png";
+
   for(let i=0; i<512*512; i++){
     let val = 255*Math.floor(Math.random()*2);
     data[4*i] = val;
@@ -106,20 +201,21 @@ function initGOL(canvas){
   let front = createTexture(gl,gl.TEXTURE0,data);
   let frontIndex = 0;
 
-  for(let i=0; i<512*512; i++){
-    let val = 255*Math.floor(Math.random()*2);
-    data[4*i] = val;
-    data[4*i+1] = val;
-    data[4*i+2] = val;
-    data[4*i+3] = 255;
-  }
   let back = createTexture(gl,gl.TEXTURE1,data);
   let backIndex = 1;
+
+  let markFront = createTexture(gl,gl.TEXTURE2,data);
+  let markFrontIndex = 2;
+
+  let markBack = createTexture(gl,gl.TEXTURE3,data);
+  let markBackIndex = 3;
+
+
   let p = 0.00001;
 
   const frameBuffer = gl.createFramebuffer();
 
-  let draw = function(scale,textureIndex){
+  let drawTexture = function(scale,textureIndex){
     gl.viewport(0,0,1000,1000);
     gl.useProgram(drawProgram.program);
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
@@ -127,15 +223,21 @@ function initGOL(canvas){
     gl.enableVertexAttribArray(drawProgram.attributes['v_position'])
     gl.uniform2f(drawProgram.uniforms['scale'], scale, scale);
     gl.uniform1i(drawProgram.uniforms['state'], textureIndex);
+    console.log('drawing: '+textureIndex);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   }
 
-  let drawFront = function(scale){
-    draw(scale,frontIndex);
+  let draw = function(scale){
+    drawTexture(scale,markFrontIndex);
   }
 
-  let drawBack = function(scale){
-    draw(scale,backIndex);
+  let swap = function(){
+    let tmp = back;
+    back=front;
+    front=tmp;
+    let tmp1 = backIndex;
+    backIndex=frontIndex;
+    frontIndex=tmp1;
   }
 
   let step = function(){
@@ -151,12 +253,32 @@ function initGOL(canvas){
     gl.uniform1ui(stepProgram.uniforms['seed'], Math.floor(Math.random()*4294967296));
     gl.uniform1f(stepProgram.uniforms['p'], p);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-    let tmp = back;
-    back=front;
-    front=tmp;
-    let tmp1 = backIndex;
-    backIndex=frontIndex;
-    frontIndex=tmp1;
+    swap();
+  }
+
+  let mark = function(){;
+    gl.bindFramebuffer(gl.FRAMEBUFFER,frameBuffer);
+    gl.useProgram(markProgram.program);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, markFront, 0);
+    gl.viewport(0,0,512,512);
+    gl.vertexAttribPointer(markProgram.attributes['v_position'], 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(markProgram.attributes['v_position'])
+    gl.uniform2f(markProgram.uniforms['scale'], 512,512);
+    gl.uniform1i(markProgram.uniforms['state'], frontIndex);
+    gl.uniform1i(markProgram.uniforms['masks'], masksIndex);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+    gl.useProgram(floodProgram.program);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, markBack, 0);
+    gl.vertexAttribPointer(floodProgram.attributes['v_position'], 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(floodProgram.attributes['v_position'])
+    gl.uniform2f(floodProgram.uniforms['scale'], 512,512);
+    gl.uniform1i(floodProgram.uniforms['state'], markFrontIndex);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, markFront, 0);
+    gl.uniform1i(floodProgram.uniforms['state'], markBackIndex);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   }
 
   let set = function(offsetX, offsetY, positions){
@@ -179,7 +301,7 @@ function initGOL(canvas){
     p=newP;
   }
 
-  return {drawFront: drawFront, drawBack: drawBack, step:step, set:set, setP:setP}
+  return {draw: draw, step:step, set:set, setP:setP, mark:mark}
 }
 
 function createProgram(gl,vsSource,fsSource,attribs,unifs){
@@ -254,7 +376,7 @@ let shapes = {
   square: [[0,0],[0,1],[1,0],[1,1]],
   blinker: [[0,0],[0,1],[0,2]],
   beehive: [[0,0],[0,1],[1,2],[2,1],[2,0],[1,-1]],
-  glider: [[0,2],[1,2],[2,2],[2,1],[1,0]],
+  glider: [[0,-2],[-1,-2],[-2,-2],[-2,-1],[-1,-0]],
   lwss: [[0,0],[1,1],[1,2],[1,3],[0,3],[-1,3],[-2,3],[-3,3],[-4,2]]
 }
 
@@ -266,7 +388,7 @@ function main(){
   document.getElementById('squareButton').onclick = () => gol.set(256,256,shapes['square']);
   document.getElementById('blinkerButton').onclick = () => gol.set(256,256,shapes['blinker']);
   document.getElementById('beehiveButton').onclick = () => gol.set(256,256,shapes['beehive']);
-  document.getElementById('gliderButton').onclick = () => gol.set(0,0,shapes['glider']);
+  document.getElementById('gliderButton').onclick = () => gol.set(256,256,shapes['glider']);
   document.getElementById('lwssButton').onclick = () => gol.set(256,256,shapes['lwss']);
 
   let setPClick = function(){
@@ -277,10 +399,11 @@ function main(){
   document.getElementById('fluctuationButton').addEventListener('click', setPClick);
   document.getElementById('fluctuationText').addEventListener('keydown', (e) => {if(e.key==='Enter') setPClick()});
 
-  gol.drawFront(2*500);
+  gol.draw(2*500);
   window.setInterval(() => {
     gol.step();
-    gol.drawFront(2*500);
+    gol.mark();
+    gol.draw(2*500);
   }, 10);
 }
 
