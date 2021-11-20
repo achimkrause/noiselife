@@ -58,11 +58,11 @@ const fsMark =
       marks += mask(0,j,vec4(1.0,0.0,0.0,1.0));
       marks += mask(1,j,vec4(1.0,0.0,0.0,1.0));
     }
-    for(int j=0;j<=9;j++){
-      marks += mask(2,j,vec4(0.0,0.0,1.0,1.0));
-    }
-    marks += mask(3,0,vec4(1.0,1.0,0.0,1.0));
-    marks += mask(3,1,vec4(1.0,1.0,0.0,1.0));
+//    for(int j=0;j<=9;j++){
+//      marks += mask(2,j,vec4(0.0,0.0,1.0,1.0));
+//    }
+//    marks += mask(3,0,vec4(1.0,1.0,0.0,1.0));
+//    marks += mask(3,1,vec4(1.0,1.0,0.0,1.0));
     marks.a = min(marks.a, 1.0);
 
     int x = int(gl_FragCoord.x);
