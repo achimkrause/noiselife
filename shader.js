@@ -40,31 +40,35 @@ const fsMark =
   }
 
   vec4 mask(int s, int t, int rleft, int rbottom, int rright, int rtop, int hflip, int vflip){
-      int mask = 0;
+      int mask = 1;
       for(int i=-rleft;i<=rright;i++){
         for(int j=-rbottom; j<=rtop; j++){
-          int w = getWeight(s,t);
-          mask+= (w*getState(s+hflip*i,s+vflip*j) - max(w,0))*abs(sign(i))*abs(sign(j));
+          int w = getWeight(s+i,t+j);
+          mask+= (w*getState(hflip*i,vflip*j) - max(w,0))*abs(sign(i))*abs(sign(j));
         }
       }
-      return float(max(mask,0))*texture(state, vec2(s, t) / scale);
+      return float(max(mask,0))*texture(masks, vec2(s, t) / scale);
   }
 
   void main(){
     float current = float(getState(0,0));
 
-    vec4 masks = mask(1,1,-1,-1,3,3,1,1);
-    masks += mask(1,1,-1,-1,3,3,-1,1);
-    masks += mask(1,1,-1,-1,3,3,1,-1);
-    masks += mask(1,1,-1,-1,3,3,-1,-1);
-    masks += mask(7,2,-2,-2,2,2,1,1);
-    masks += mask(7,2,-2,-2,2,2,-1,1);
-    masks += mask(7,2,-2,-2,2,2,1,-1);
-    masks += mask(7,2,-2,-2,2,2,-1,-1);
-    masks += mask(12,2,-2,-2,1,1,1,1);
+    vec4 marks = mask(1,1,1,1,3,3,1,1);
+    marks += mask(1,1,1,1,3,3,-1,1);
+    marks += mask(1,1,1,1,3,3,1,-1);
+    marks += mask(1,1,1,1,3,3,-1,-1);
+    marks += mask(7,2,2,2,2,2,1,1);
+    marks += mask(7,2,2,2,2,2,-1,1);
+    marks += mask(7,2,2,2,2,2,1,-1);
+    marks += mask(7,2,2,2,2,2,-1,-1);
+    marks += mask(11,2,2,2,1,1,1,1);
 
+    int x = int(gl_FragCoord.x);
+    int y = int(gl_FragCoord.y);
+    fragColor = marks.a*marks + (1.0-marks.a)*texture(state, (gl_FragCoord.xy / scale));
 
-    fragColor = masks;
+    //1.0*texture(state, (gl_FragCoord.xy / scale)) + 1.0*texture(masks, (gl_FragCoord.xy - vec2(256-10, 256-1)) / scale);
+    //+ 
   }`
 
 const fsFlood = 
@@ -188,7 +192,7 @@ function initGOL(canvas){
     gl.activeTexture(gl.TEXTURE4);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 100, 100, gl.RGBA, gl.UNSIGNED_BYTE, image);
   };
-  image.src = "masks.png";
+  image.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAAXNSR0IArs4c6QAAAARzQklUCAgICHwIZIgAAAHDSURBVHhe7dVLisJQAAXRlxX1Kly1m+gdpZ/5YJCeOAjU4ISgGCFeqixd1jHm+d2xjDFPxx0Ell3IcyzrY7v/eqDe3niRvzyf7xNyh4r9njvvA/r1Y/Zrz3lpF/V6/TMffmcchNws5G1m+y06qnnX8fnxhNwoZPsZuvyPnLD/u3bfDHc+Cfhzjn0XCCEkRiA2RyGExAjE5iiEkBiB2ByFEBIjEJujEEJiBGJzFEJIjEBsjkIIiRGIzVEIITECsTkKISRGIDZHIYTECMTmKISQGIHYHIUQEiMQm6MQQmIEYnMUQkiMQGyOQgiJEYjNUQghMQKxOQohJEYgNkchhMQIxOYohJAYgdgchRASIxCboxBCYgRicxRCSIxAbI5CCIkRiM1RCCExArE5CiEkRiA2RyGExAjE5iiEkBiB2ByFEBIjEJujEEJiBGJzFEJIjEBsjkIIiRGIzVEIITECsTkKISRGIDZHIYTECMTmKISQGIHYHIUQEiMQm6MQQmIEYnMUQkiMQGyOQgiJEYjNUQghMQKxOQohJEYgNkchhMQIxOYohJAYgdgchRASIxCboxBCYgRicxRCSIxAbI5CCIkRiM35Ay5BI2UTb865AAAAAElFTkSuQmCC";
 
   for(let i=0; i<512*512; i++){
     let val = 255*Math.floor(Math.random()*2);
@@ -401,7 +405,7 @@ function main(){
 
   gol.draw(2*500);
   window.setInterval(() => {
-    gol.step();
+    //gol.step();
     gol.mark();
     gol.draw(2*500);
   }, 10);
