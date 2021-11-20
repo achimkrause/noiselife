@@ -183,6 +183,7 @@ function initGOL(canvas){
 
   let masks = createTexture(gl,gl.TEXTURE4,data);
   let masksIndex = 4;
+  let marking = false;
 
   const image = new Image();
   image.onload = function(){
@@ -226,12 +227,17 @@ function initGOL(canvas){
     gl.enableVertexAttribArray(drawProgram.attributes['v_position'])
     gl.uniform2f(drawProgram.uniforms['scale'], scale, scale);
     gl.uniform1i(drawProgram.uniforms['state'], textureIndex);
-    console.log('drawing: '+textureIndex);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   }
 
   let draw = function(scale){
-    drawTexture(scale,markFrontIndex);
+    if(marking){
+      gol.mark();
+      drawTexture(scale,markFrontIndex);
+    }
+    else{
+      drawTexture(scale,frontIndex);
+    }
   }
 
   let swap = function(){
@@ -241,6 +247,10 @@ function initGOL(canvas){
     let tmp1 = backIndex;
     backIndex=frontIndex;
     frontIndex=tmp1;
+  }
+
+  let setMarking = function(val){
+    marking=val;
   }
 
   let step = function(){
@@ -304,7 +314,7 @@ function initGOL(canvas){
     p=newP;
   }
 
-  return {draw: draw, step:step, set:set, setP:setP, mark:mark}
+  return {draw: draw, step:step, set:set, setP:setP, mark:mark, setMarking:setMarking}
 }
 
 function createProgram(gl,vsSource,fsSource,attribs,unifs){
@@ -401,10 +411,17 @@ function main(){
   };
   document.getElementById('fluctuationButton').addEventListener('click', setPClick);
   document.getElementById('fluctuationText').addEventListener('keydown', (e) => {if(e.key==='Enter') setPClick()});
+  document.getElementById('marking').addEventListener('change', (e) => {
+    if(e.currentTarget.checked){
+      gol.setMarking(true);
+    }
+    else{
+      gol.setMarking(false);
+    }
+  })
 
   let running=true;
   document.addEventListener('keydown', (e) => {
-    console.log(e.key);
     if(e.key===' '){
       if(e.target == document.body){
         e.preventDefault();
@@ -418,7 +435,6 @@ function main(){
     if(running){
       gol.step();
     }
-    gol.mark();
     gol.draw(2*512);
   }, 10);
 }
