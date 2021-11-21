@@ -12,13 +12,21 @@
   <button id="blinkerButton">Blinker</button>
   <button id="gliderButton">Glider</button>
   <button id="lwssButton">LWSS</button>
+  <button id="blseButton">BLSE</button>
+  <button id="randomButton">Random</button>
+  <input type="text" id="densityText" value="0.5"></input>
   </div>
   <div>
   <button id="fluctuationButton">Set fluctuation rate</button>
   <input type="text" id="fluctuationText" value="0.00001"></input>
   </div>
   <div>
-    <input type="checkbox" id="marking" name="marking">
+    <input type="checkbox" id="marking" name="marking" checked>
     <label for="marking">Mark structures</label>
   </div>
+  <div>
+    Step <span id="step"></span>, distance travelled: <span id="distance"></span>, gliders emitted: <span id="gliders"></span>
+  </div>
+  <div id="measurements">
+  </div> 
 </body>
